@@ -48,13 +48,26 @@ size_t size();
 /** Log lines dropped because the ring lock was contended. */
 uint32_t dropped();
 
+/** Bytes held in the frozen boot prologue. */
+size_t prologueSize();
+
+/** Bytes held in the rolling window. */
+size_t windowSize();
+
 /**
- * Oldest-first copy of the ring contents.
+ * Copy a slice of the frozen prologue, oldest byte first.
  *
- * Returns a std::string rather than filling a caller buffer because the only
- * consumer is the HTTP layer, which needs an owning buffer anyway.
+ * Chunked deliberately. Returning the whole buffer as a std::string required a
+ * contiguous allocation the size of the ring, which at 32 KB failed against a
+ * fragmented heap and aborted the device -- reading the diagnostic buffer
+ * crashed the thing it was meant to diagnose.
+ *
+ * @return bytes copied, 0 at or past the end
  */
-std::string contents();
+size_t readPrologue(size_t offset, char *out, size_t max);
+
+/** As readPrologue(), over the rolling window. */
+size_t readWindow(size_t offset, char *out, size_t max);
 
 /** Discards buffered content, keeping the ring allocated and capturing. */
 void clear();

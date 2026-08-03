@@ -667,9 +667,24 @@ esp_err_t WebServerManager::handleGetBootLog(httpd_req_t *req) {
                          (unsigned)bootlog::dropped());
   httpd_resp_send_chunk(req, header, n);
 
-  const std::string body = bootlog::contents();
-  if (!body.empty()) {
-    httpd_resp_send_chunk(req, body.data(), body.size());
+  // Streamed in small chunks rather than assembled into one buffer. Building
+  // the whole thing as a std::string needed a contiguous allocation the size of
+  // the ring; at 32 KB that failed on a fragmented heap and, with exceptions
+  // disabled, aborted the device from inside this handler.
+  char buf[512];
+  size_t off = 0, got = 0;
+  while ((got = bootlog::readPrologue(off, buf, sizeof(buf))) > 0) {
+    if (httpd_resp_send_chunk(req, buf, got) != ESP_OK) return ESP_FAIL;
+    off += got;
+  }
+  if (bootlog::windowSize() > 0) {
+    static const char sep[] = "--- boot prologue ends, rolling window follows ---\n";
+    httpd_resp_send_chunk(req, sep, sizeof(sep) - 1);
+    off = 0;
+    while ((got = bootlog::readWindow(off, buf, sizeof(buf))) > 0) {
+      if (httpd_resp_send_chunk(req, buf, got) != ESP_OK) return ESP_FAIL;
+      off += got;
+    }
   }
   return httpd_resp_send_chunk(req, nullptr, 0);
 }

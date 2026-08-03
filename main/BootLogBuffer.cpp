@@ -170,24 +170,58 @@ size_t size() {
     return s_prologueLen + (s_wrapped ? s_capacity : s_head);
 }
 
-std::string contents() {
-    if (!s_buf || !s_lock) return {};
-    std::string out;
-    if (xSemaphoreTake(s_lock, pdMS_TO_TICKS(200)) != pdTRUE) return {};
-    out.reserve(s_prologueLen + (s_wrapped ? s_capacity : s_head) + 48);
-    out.append(s_buf, s_prologueLen);
-    if (s_wrapped || s_head) {
-        out.append("--- boot prologue ends, rolling window follows ---\n");
-        if (s_wrapped) {
-            // Oldest data sits after the write head.
-            out.append(s_ring + s_head, s_capacity - s_head);
-            out.append(s_ring, s_head);
-        } else {
-            out.append(s_ring, s_head);
+size_t prologueSize() {
+    return s_buf ? s_prologueLen : 0;
+}
+
+size_t windowSize() {
+    if (!s_buf) return 0;
+    return s_wrapped ? s_capacity : s_head;
+}
+
+/**
+ * Copy at most `max` bytes starting `offset` bytes into the frozen prologue.
+ *
+ * Chunked rather than returning the whole thing as a std::string. Building the
+ * buffer into one string needed a contiguous allocation the size of the ring,
+ * and at 32 KB that failed against a fragmented heap: operator new threw,
+ * exceptions are disabled, and the device aborted inside the HTTP handler --
+ * i.e. reading the diagnostic buffer crashed the device it was diagnosing.
+ */
+size_t readPrologue(size_t offset, char *out, size_t max) {
+    if (!s_buf || !s_lock || !out || max == 0) return 0;
+    if (xSemaphoreTake(s_lock, pdMS_TO_TICKS(200)) != pdTRUE) return 0;
+    size_t n = 0;
+    if (offset < s_prologueLen) {
+        n = s_prologueLen - offset;
+        if (n > max) n = max;
+        memcpy(out, s_buf + offset, n);
+    }
+    xSemaphoreGive(s_lock);
+    return n;
+}
+
+/** As readPrologue(), but over the rolling window, oldest byte first. */
+size_t readWindow(size_t offset, char *out, size_t max) {
+    if (!s_buf || !s_lock || !out || max == 0) return 0;
+    if (xSemaphoreTake(s_lock, pdMS_TO_TICKS(200)) != pdTRUE) return 0;
+
+    const size_t used = s_wrapped ? s_capacity : s_head;
+    size_t n = 0;
+    if (offset < used) {
+        n = used - offset;
+        if (n > max) n = max;
+        // When wrapped, the oldest byte sits at s_head and the region can span
+        // the end of the allocation, so a read may need two copies.
+        const size_t begin = s_wrapped ? ((s_head + offset) % s_capacity) : offset;
+        const size_t first = (begin + n > s_capacity) ? (s_capacity - begin) : n;
+        memcpy(out, s_ring + begin, first);
+        if (first < n) {
+            memcpy(out + first, s_ring, n - first);
         }
     }
     xSemaphoreGive(s_lock);
-    return out;
+    return n;
 }
 
 void clear() {
