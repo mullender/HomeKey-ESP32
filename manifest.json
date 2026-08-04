@@ -1,6 +1,6 @@
 {
   "name": "HomeKey-ESP32 (M5Stack AtomS3 Lite)",
-  "version": "improv-serial-b71b72b-release-cors-test",
+  "version": "improv-serial-b2e89e2",
   "new_install_prompt_erase": true,
   "new_install_improv_wait_time": 30,
   "builds": [
@@ -9,10 +9,7 @@
       "serialType": "cdc",
       "improv": true,
       "parts": [
-        {
-          "path": "https://github.com/mullender/HomeKey-ESP32/releases/download/improv-serial-b71b72b/HomeKey-ESP32-b71b72b-atoms3lite-esp32s3-factory.bin",
-          "offset": 0
-        }
+        { "path": "homekey-esp32s3.bin", "offset": 0 }
       ]
     }
   ]
