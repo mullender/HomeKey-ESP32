@@ -144,4 +144,9 @@
   #define NFC_READER_TYPE 2                 // ST25R3916 (I2C)
   #undef  NFC_ACTIVE_PRESET
   #define NFC_ACTIVE_PRESET 5               // "AtomS3 Lite + Unit NFC" -- last entry in nfcGpioPinsPresets
+  // AtomS3 Lite: single addressable RGB LED on GPIO 35, WS2812/SK6812,
+  // GRB. Generic NEOPIXEL_TYPE=5 already matches; HS_STATUS_LED stays 255
+  // (would collide with the Pixel driver on GPIO 35).
+  #undef  NFC_NEOPIXEL_PIN
+  #define NFC_NEOPIXEL_PIN 35
 #endif
