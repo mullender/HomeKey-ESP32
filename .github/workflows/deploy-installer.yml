@@ -1,0 +1,256 @@
+# Build and publish the fork's HomeKey-ESP32 installer to GitHub Pages.
+#
+# The installer is a small ESP Web Tools page whose factory binary comes
+# from a GitHub Release (immutable source of truth). Direct browser fetches
+# of release assets do not carry CORS headers -- release-assets.githubusercontent.com
+# sends no Access-Control-Allow-Origin even with the Pages Origin header --
+# so this workflow downloads the verified binary and serves it same-origin
+# from Pages, where CORS is not a concern.
+#
+# Runs on every published release whose tag matches "improv-serial-*" and
+# on manual dispatch. Only touches Pages; upstream files and other
+# branches are untouched.
+#
+# Actions are pinned by major-version tag, matching the rest of the
+# repository's workflows. That trades absolute immutability for readable
+# maintenance; if the org wants to move to commit-SHA pins across the
+# board, this file should switch in the same pass.
+name: deploy-installer
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish as latest (empty = newest matching)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never cancel a Pages deploy in flight -- if two release-published events
+# fire in quick succession the second waits for the first to finish, so we
+# don't publish half-built content.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    # Gate the entire job -- previously an in-step `exit 0` only skipped
+    # one step and still ran checkout+deploy, which would have re-published
+    # the latest matching release on every unrelated release event. The
+    # condition allows any manual dispatch and only tag-matching releases.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'release' &&
+       startsWith(github.event.release.tag_name, 'improv-serial-'))
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Checkout main (installer/ template + this workflow only)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Discover releases, download verified assets, generate site
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          # `|| ''` guards against the `release` event that has no `.inputs`,
+          # and vice versa for `workflow_dispatch` and `.release`.
+          REQUESTED_TAG: ${{ github.event.inputs.tag || '' }}
+          EVENT_TAG: ${{ github.event.release.tag_name || '' }}
+        run: |
+          set -euo pipefail
+          python3 -c 'import sys; print("python", sys.version)'
+          mkdir -p _site
+
+          # Enumerate improv-serial-* releases (all pages, newest first per
+          # GitHub API ordering) and materialise per-release records.
+          python3 - <<'PY'
+          import json, os, sys, urllib.request
+
+          repo = os.environ["REPO"]
+          token = os.environ["GH_TOKEN"]
+          req_tag = os.environ.get("REQUESTED_TAG", "").strip()
+          event_tag = os.environ.get("EVENT_TAG", "").strip()
+
+          def gh(url):
+              req = urllib.request.Request(url, headers={
+                  "Authorization": f"Bearer {token}",
+                  "Accept": "application/vnd.github+json",
+                  "X-GitHub-Api-Version": "2022-11-28",
+              })
+              return json.loads(urllib.request.urlopen(req, timeout=30).read())
+
+          releases = []
+          page = 1
+          while True:
+              batch = gh(f"https://api.github.com/repos/{repo}/releases?per_page=100&page={page}")
+              if not batch: break
+              releases.extend(batch)
+              page += 1
+              if len(batch) < 100: break
+
+          matching = [r for r in releases if r["tag_name"].startswith("improv-serial-")]
+          matching.sort(key=lambda r: r["created_at"], reverse=True)
+
+          if not matching:
+              print("::error::No releases match tag prefix 'improv-serial-*'. Nothing to publish.")
+              sys.exit(1)
+
+          # Pick "latest" by the same rules the readme documents: an explicit
+          # dispatch tag wins; then the release-published event's own tag if
+          # matching; otherwise the newest matching release.
+          latest = None
+          if req_tag:
+              latest = next((r for r in matching if r["tag_name"] == req_tag), None)
+              if latest is None:
+                  print(f"::error::Requested tag '{req_tag}' not found among improv-serial-* releases.")
+                  sys.exit(1)
+          elif event_tag and event_tag.startswith("improv-serial-"):
+              latest = next((r for r in matching if r["tag_name"] == event_tag), None) or matching[0]
+          else:
+              latest = matching[0]
+
+          print(f"Latest release: {latest['tag_name']} (target={latest['target_commitish']})")
+
+          # Persist the pick + full catalogue for the next steps. IMPORTANT:
+          # only the *latest* release's binary is copied into Pages. The
+          # older entries are recorded as an audit trail with links back to
+          # their immutable GitHub Release pages, but they are NOT flashable
+          # from Pages because release-assets.githubusercontent.com does
+          # not send CORS headers. If we later want in-page selectable
+          # history, this workflow will grow per-tag subdirectories with
+          # their own manifest.json (bounded by Pages artifact size).
+          with open("_site/releases.json", "w") as f:
+              json.dump({
+                  "latest_tag": latest["tag_name"],
+                  "notes": "Only 'latest_tag' is flashable from this Pages site; other entries link to their GitHub Release for record.",
+                  "releases": [{
+                      "tag": r["tag_name"],
+                      "commit": r["target_commitish"],
+                      "prerelease": r["prerelease"],
+                      "created_at": r["created_at"],
+                      "html_url": r["html_url"],
+                      "assets": [
+                          {"name": a["name"], "size": a["size"],
+                           "browser_download_url": a["browser_download_url"]}
+                          for a in r["assets"]
+                      ],
+                  } for r in matching],
+              }, f, indent=2)
+          with open("latest_release.json", "w") as f:
+              json.dump(latest, f)
+          PY
+
+          # Read the pick back out and download+verify the primary asset.
+          python3 - <<'PY'
+          import json, hashlib, os, sys, urllib.request
+
+          latest = json.load(open("latest_release.json"))
+          token = os.environ["GH_TOKEN"]
+          tag   = latest["tag_name"]
+
+          assets = latest["assets"]
+          bins   = [a for a in assets if a["name"].endswith("-factory.bin")]
+          shas   = [a for a in assets if a["name"].endswith(".sha256")]
+          if len(bins) != 1:
+              print(f"::error::Expected exactly one *-factory.bin asset on {tag}, got {len(bins)}")
+              sys.exit(1)
+          if len(shas) != 1:
+              print(f"::error::Expected exactly one *.sha256 sidecar asset on {tag}, got {len(shas)}")
+              sys.exit(1)
+          bin_asset = bins[0]
+          sha_asset = shas[0]
+          if sha_asset["name"] != bin_asset["name"] + ".sha256":
+              print(f"::error::sha256 sidecar '{sha_asset['name']}' does not correspond to binary '{bin_asset['name']}'")
+              sys.exit(1)
+
+          # GitHub asset downloads via the API endpoint honour the token, so
+          # this works for private releases too if the repo becomes private.
+          def download(asset_id):
+              req = urllib.request.Request(
+                  f"https://api.github.com/repos/{os.environ['REPO']}/releases/assets/{asset_id}",
+                  headers={"Authorization": f"Bearer {token}",
+                           "Accept": "application/octet-stream"})
+              return urllib.request.urlopen(req, timeout=120).read()
+
+          bin_bytes = download(bin_asset["id"])
+          sha_bytes = download(sha_asset["id"]).decode().strip()
+
+          expected = sha_bytes.split()[0].lower()
+          actual   = hashlib.sha256(bin_bytes).hexdigest().lower()
+          if expected != actual:
+              print(f"::error::SHA-256 mismatch on {bin_asset['name']}: expected {expected}, got {actual}")
+              sys.exit(1)
+          if len(bin_bytes) != bin_asset["size"]:
+              print(f"::error::Size mismatch on {bin_asset['name']}: expected {bin_asset['size']}, got {len(bin_bytes)}")
+              sys.exit(1)
+
+          # Same-origin filename that the manifest points at. Keep the
+          # release's asset name verbatim so a curious user can trace the
+          # served file back to its immutable release.
+          out_name = bin_asset["name"]
+          with open(f"_site/{out_name}", "wb") as f:
+              f.write(bin_bytes)
+
+          # Preserve the sidecar too, so an end user can verify without
+          # trusting the workflow.
+          with open(f"_site/{out_name}.sha256", "w") as f:
+              f.write(f"{actual}  {out_name}\n")
+
+          # ESP Web Tools manifest. serialType 'cdc' matches ESP32-S3 native
+          # USB-Serial-JTAG (verified against esp-web-tools/src/flash.ts:43-47:
+          # isCdcUsbPort is true when USB VID 0x303a + PID in the S3 range).
+          manifest = {
+              "name": "HomeKey-ESP32 (M5Stack AtomS3 Lite)",
+              "version": tag,
+              "new_install_prompt_erase": True,
+              "new_install_improv_wait_time": 30,
+              "builds": [{
+                  "chipFamily": "ESP32-S3",
+                  "serialType": "cdc",
+                  "improv": True,
+                  "parts": [{"path": out_name, "offset": 0}],
+              }],
+          }
+          with open("_site/manifest.json", "w") as f:
+              json.dump(manifest, f, indent=2)
+
+          print(f"Prepared _site with {out_name} ({len(bin_bytes)} bytes, sha256={actual})")
+          PY
+
+          # Static UI on top: template + .nojekyll live in installer/ on the
+          # default branch so they are versioned with this workflow.
+          cp installer/index.html _site/index.html
+          cp installer/.nojekyll  _site/.nojekyll
+
+          echo "==== _site contents ===="
+          ls -la _site
+          echo "==== manifest.json ===="
+          cat _site/manifest.json
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
