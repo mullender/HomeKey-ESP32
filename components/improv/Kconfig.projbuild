@@ -1,0 +1,27 @@
+menu "Improv Serial"
+
+config ENABLE_IMPROV_SERIAL
+    bool "Enable Improv Serial provisioning"
+    default y
+    help
+        Adds the Improv Serial protocol (https://www.improv-wifi.com/serial/)
+        so first-time Wi-Fi provisioning can be done from the same tab as the
+        web flasher: ESP Web Tools flashes the firmware, then prompts for
+        SSID / password and pushes them over the same USB serial connection.
+
+        When enabled and no Wi-Fi credentials are stored, Improv becomes the
+        sole Serial RX consumer for that boot -- the HomeSpan console "press
+        any key" trigger is suppressed to avoid a second reader. After a
+        successful association the credentials are persisted via HomeSpan's
+        public API and the device reboots, handing serial ownership back to
+        the console on the next boot.
+
+        The existing captive-portal / config-AP flow is unchanged and remains
+        the reprovisioning path once credentials are stored.
+
+        Default y: this is the intended provisioning experience. Disable it
+        only if the firmware is too tight on flash (this component adds a
+        few kilobytes) or if the console must stay usable when the device is
+        unprovisioned.
+
+endmenu

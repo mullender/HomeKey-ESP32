@@ -7,3 +7,17 @@ menu "Arduino subsystem serial logging"
     bool "Initialize serial logging for the Arduino subsystem and by extent for HomeSpan"
     default y
 endmenu
+
+menu "Installer variant defaults"
+  config INSTALLER_ATOMS3_LITE_DEFAULTS
+    depends on IDF_TARGET_ESP32S3
+    bool "M5Stack AtomS3 Lite installer defaults (ST25R3916 on Grove)"
+    default n
+    help
+      Set only for the Pages web-flasher factory image. When enabled, the
+      firmware's compile-time NFC defaults change to reader type 2 (ST25R3916,
+      I2C) using the "AtomS3 Lite + Unit NFC" pin preset (SDA=G2, SCL=G1).
+      Existing persisted NVS still wins on non-factory upgrades, so this is
+      safe to enable per build variant without disturbing already-provisioned
+      devices that reflash later. Do not enable for the generic firmware.
+endmenu

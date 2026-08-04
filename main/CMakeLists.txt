@@ -2,9 +2,11 @@ idf_component_register(SRCS "main.cpp" "app_events.cpp" "app_event_loop.cpp" "Co
                     "HardwareManager.cpp" "HomeKitLock.cpp" "LockManager.cpp"
                     "MqttManager.cpp" "HKServices.cpp" "NfcManager.cpp" "Pn532Reader.cpp" "Pn7160Reader.cpp" "St25r3916Reader.cpp" "WebServerManager.cpp" "WebSocketLogSinker.cpp"
                     "ConsoleLogSinker.cpp" "GPIOAllocator.cpp" "BootLogBuffer.cpp"
+                    "improv_boot_adapter.cpp" "homespan_wifidata_check.cpp"
                     INCLUDE_DIRS "include"
                     PRIV_REQUIRES HomeSpan pn532_hal pn7160 DigitalDoorKey esp_https_server mqtt libsodium
-                    msgpack-c json loggable loggable_espidf esp_wifi dns_server espcoredump app_update)
+                    msgpack-c json loggable loggable_espidf esp_wifi dns_server espcoredump app_update
+                    improv)
 
 include(FetchContent)
 
