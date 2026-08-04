@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HomeKey-ESP32 installer</title>
+  <style>
+    :root { color-scheme: light dark; }
+    html, body { margin: 0; padding: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+    main { max-width: 44rem; margin: 2rem auto; padding: 1rem 1.5rem; line-height: 1.5; }
+    h1 { font-size: 1.5rem; margin: 0 0 0.5rem 0; }
+    p { margin: 0.6rem 0; }
+    .warn {
+      background: #fff3cd;
+      color: #533f03;
+      border: 1px solid #ffe69c;
+      border-left: 4px solid #ffcc00;
+      padding: 0.9rem 1rem;
+      margin: 1rem 0;
+      border-radius: 4px;
+    }
+    .warn strong { display: block; margin-bottom: 0.3rem; }
+    @media (prefers-color-scheme: dark) {
+      .warn { background: #3a2d00; color: #ffe69c; border-color: #6b5200; border-left-color: #ffcc00; }
+    }
+    ol { padding-left: 1.4rem; }
+    code, .mono { font-family: SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.9em; }
+    .install-row { margin: 1.25rem 0; }
+    footer { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #ccc4; font-size: 0.85em; color: #666; }
+    .browser-note { color: #666; font-size: 0.85em; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>HomeKey-ESP32 installer</h1>
+  <p>
+    Flash <em>HomeKey-ESP32</em> to an <strong>M5Stack AtomS3 Lite</strong>
+    (ESP32-S3) over USB, then configure Wi-Fi in the same browser tab via
+    Improv Serial. No cable-and-terminal, no captive-portal step.
+  </p>
+
+  <div class="warn" role="alert">
+    <strong>Factory install erases the entire flash.</strong>
+    Any existing HomeKit pairing, saved Wi-Fi credentials, HomeKey reader
+    credentials, and stored core dumps on this board will be lost. This is
+    intentional for first-time setup. If you're re-provisioning an already
+    paired device, use the device's captive-portal / config-AP flow
+    instead of this installer.
+  </div>
+
+  <ol>
+    <li>Plug the AtomS3 Lite into a USB-C port on this computer.</li>
+    <li>
+      Put the board into download mode: press and hold the small
+      <strong>reset</strong> button on the side of the AtomS3 Lite for
+      about two seconds until the internal green LED lights up, then
+      release. Per
+      <a href="https://docs.m5stack.com/en/core/AtomS3%20Lite">the M5Stack
+      AtomS3 Lite documentation</a>, this is the supported way to enter
+      the ESP32-S3 bootloader.
+    </li>
+    <li>
+      Click <strong>Install</strong> below and pick the port. The name
+      typically starts with <span class="mono">/dev/cu.usbmodem&hellip;</span>
+      on macOS or <span class="mono">COM&hellip;</span> on Windows.
+    </li>
+    <li>
+      After flashing, the installer will prompt for your Wi-Fi SSID and
+      password and push them to the device over the same serial connection.
+      This takes ~15&nbsp;seconds; the device reboots on success and joins
+      your network.
+    </li>
+  </ol>
+
+  <div class="install-row">
+    <esp-web-install-button manifest="./manifest.json"></esp-web-install-button>
+  </div>
+
+  <p class="browser-note">
+    Requires <strong>Chrome</strong>, <strong>Edge</strong>, or another
+    Chromium-based browser on a desktop OS. Safari and Firefox do not
+    support Web Serial and this page will show a compatibility notice
+    instead of the install button.
+  </p>
+
+  <footer>
+    <p>
+      Build: <span class="mono">improv-serial-b2e89e2</span>
+      &middot; target: <span class="mono">ESP32-S3 (M5Stack AtomS3 Lite)</span>
+      &middot; source:
+      <a href="https://github.com/mullender/HomeKey-ESP32/tree/feat/improv-serial">
+        mullender/HomeKey-ESP32@feat/improv-serial
+      </a>
+    </p>
+    <p>
+      This installer is served from
+      <a href="https://mullender.github.io/HomeKey-ESP32/">the fork's
+      GitHub Pages</a> and is independent of the upstream project's release
+      infrastructure.
+    </p>
+  </footer>
+</main>
+
+<!-- ESP Web Tools. Loaded from unpkg with a pinned major so the page keeps
+     working if the API changes. Loading order matters: the module has to be
+     imported after the <esp-web-install-button> element is in the DOM. -->
+<script type="module"
+  src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module">
+</script>
+</body>
+</html>
