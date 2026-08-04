@@ -1,0 +1,14 @@
+# AtomS3 Lite web-installer variant defaults.
+#
+# Layer this on top of the generic sdkconfig.defaults when building the
+# factory image served from mullender.github.io/HomeKey-ESP32/. It flips
+# NFC_READER_TYPE and NFC_ACTIVE_PRESET to the AtomS3 Lite + Unit NFC
+# (ST25R3916 on Grove, SDA=G2/SCL=G1) at compile time, so a freshly
+# flashed device pairs the right reader out of the box. Existing persisted
+# NVS still wins on non-factory upgrades -- see main/include/defaults.h.
+#
+# Build:
+#   idf.py -B build.installer.atoms3 \
+#          -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.installer.atoms3" \
+#          build
+CONFIG_INSTALLER_ATOMS3_LITE_DEFAULTS=y

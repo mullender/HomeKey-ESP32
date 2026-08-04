@@ -1,4 +1,5 @@
 #include "HardwareManager.hpp"
+#include "improv_boot_adapter.hpp"
 #include "fmt/ranges.h"
 #include "config.hpp"
 #include "esp_log.h"
@@ -337,14 +338,24 @@ void HomeKitLock::begin() {
       else 
         ESP_LOGW(TAG, "Could not acquire pin for the HomeSpan Status pin, error: %d", hsStatusPin.error());
     } 
+    // Serial RX ownership. When Improv is going to own Serial on this boot
+    // (i.e. the device has no stored Wi-Fi credentials), skip the "press any
+    // key" console trigger entirely and force HomeSpan's own serial input
+    // off. Otherwise two loop() paths -- HomeSpan's console and Improv --
+    // would race for bytes on the same UART.
     #ifdef CONFIG_INIT_ARDU_SERIAL_LOGGING
-    ESP_LOGI(TAG, "Press any key within 1 second for console access.");
-    vTaskDelay(pdMS_TO_TICKS(1000));
-    if(Serial.available()){
-      homeSpan.setLogLevel(0);
-    } else {
+    if (improv_should_own_serial()) {
       homeSpan.setLogLevel(-1);
       homeSpan.setSerialInputDisable(true);
+    } else {
+      ESP_LOGI(TAG, "Press any key within 1 second for console access.");
+      vTaskDelay(pdMS_TO_TICKS(1000));
+      if(Serial.available()){
+        homeSpan.setLogLevel(0);
+      } else {
+        homeSpan.setLogLevel(-1);
+        homeSpan.setSerialInputDisable(true);
+      }
     }
     #else
     homeSpan.setLogLevel(-1);

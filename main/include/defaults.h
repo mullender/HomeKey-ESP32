@@ -56,7 +56,9 @@
 #define HOMEKEY_ALWAYS_LOCK 0  // Flag indicating if a successful Homekey authentication should always set and publish the lock state
 #define HK_AUTH_PRECOMPUTE_ENABLED true // Enable HomeKey auth precompute cache (faster taps, higher CPU/RAM)
 #define NFC_FAST_POLLING_ENABLED false // Poll the PN532 more aggressively for faster tag detection
-#define NFC_READER_TYPE 0 // 0 = PN532, 1 = PN7160
+// NFC_READER_TYPE default: 0 = PN532, 1 = PN7160, 2 = ST25R3916.
+// Overridden below when the AtomS3 Lite installer variant is selected.
+#define NFC_READER_TYPE 0
 #define NFC_IRQ_PIN 255 // PN7160 IRQ pin (255 = unset)
 #define NFC_VEN_PIN 255 // PN7160 VEN pin (255 = unset)
 #define HS_STATUS_LED 255 // HomeSpan Status LED GPIO pin
@@ -130,3 +132,16 @@
 #define WEB_AUTH_USERNAME "admin"
 #define WEB_AUTH_PASSWORD "password"
 #define NFC_ACTIVE_PRESET 255 // NFC preset index (255 for custom pins)
+
+// Installer variant overrides. Kept at the bottom so #undef targets the
+// generic values above. Only active for the AtomS3 Lite Pages web-flasher
+// image; do NOT enable for the generic firmware. Persisted NVS still wins
+// on non-factory upgrades, so the override is limited to first-boot
+// defaults for a freshly flashed factory image.
+#include "sdkconfig.h"
+#if defined(CONFIG_INSTALLER_ATOMS3_LITE_DEFAULTS)
+  #undef  NFC_READER_TYPE
+  #define NFC_READER_TYPE 2                 // ST25R3916 (I2C)
+  #undef  NFC_ACTIVE_PRESET
+  #define NFC_ACTIVE_PRESET 5               // "AtomS3 Lite + Unit NFC" -- last entry in nfcGpioPinsPresets
+#endif

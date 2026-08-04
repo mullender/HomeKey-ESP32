@@ -1,6 +1,7 @@
 #include <cstdint>
 #include <memory>
 #include "BootLogBuffer.hpp"
+#include "improv_boot_adapter.hpp"
 #include "ConsoleLogSinker.h"
 #include "HomeSpan.h"
 #include "config.hpp"
@@ -185,6 +186,35 @@ void setup() {
   } else if (miscConfig.nfcReaderType == 2) {
     ESP_LOGI(TAG, "NFC I2C pins: SDA=%d, SCL=%d", activeNfcPins[0], activeNfcPins[1]);
   }
+  // Factory-mode Improv branch: on an unprovisioned device we skip every
+  // slow / hardware-dependent begin() path (NFC probe retries, GPIO
+  // acquisition, lock hardware, LockManager services) and stand up only the
+  // minimum needed to receive credentials over Serial: homeSpan.begin()
+  // (opens the NVS handle setWifiCredentials writes to, and honours the
+  // "Improv owns Serial" flag so HomeSpan's console does not race Improv on
+  // the same USB-CDC endpoint) plus the dedicated Improv service task.
+  //
+  // Bounded startup cost: HomeSpan.begin() contains a fixed 2 s serial
+  // banner delay (see components/HomeSpan/upstream/src/HomeSpan.cpp:145)
+  // and no WiFi association -- association only happens in poll(), which
+  // this branch never calls. initializeETH() returns immediately when
+  // ethernetEnabled is false, which is the compile-time default (see
+  // ETH_ENABLED in main/include/defaults.h) and cannot be changed by
+  // Improv, so on a freshly flashed factory image homekitLock->begin()
+  // returns within ~2 s and the Improv task starts responding immediately
+  // after. Everything else is deferred until the reboot that follows
+  // successful provisioning, at which point NVS is populated,
+  // improv_should_own_serial() returns false, and the normal boot path
+  // below runs unchanged.
+  if (improv_should_own_serial()) {
+    homekitLock->begin();
+    improv_start_after_homespan_begin();
+    ESP_LOGI(TAG, "Factory provisioning mode: NFC / lock init skipped; "
+                  "Improv Serial owns the port and will reboot on success");
+    pollHS = false;
+    return;
+  }
+
   readerDataManager->begin();
 
   nfcManager = std::make_unique<NfcManager>(*readerDataManager,
@@ -209,6 +239,11 @@ void setup() {
  * Polls HomeSpan to process HomeKit and internal events, then delays 50 ms to allow other
  * FreeRTOS tasks to run.
  */
+
+// Improv Serial runs on its own dedicated FreeRTOS task (see
+// improv_boot_adapter.cpp). That task is what actually pumps the Serial
+// parser and the state machine, so pumping it from loop() here as well
+// would introduce two readers of the same UART. Not pumped from here.
 
 void loop() {
   if(pollHS)

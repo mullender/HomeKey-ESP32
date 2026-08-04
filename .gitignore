@@ -6,7 +6,11 @@
 compile_commands.json
 src/config.h
 sdkconfig*
+!sdkconfig.defaults
+!sdkconfig.defaults.*
 build/
+build.*/
+.pio/
 managed_components/
 .gemini/
 gha-creds-*.json

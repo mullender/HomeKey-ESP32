@@ -20,6 +20,7 @@
 #include "ReaderDataManager.hpp"
 #include "cJSON.h"
 #include "config.hpp"
+#include "nfc_reader_type.hpp"
 #include "esp_chip_info.h"
 #include "esp_err.h"
 #include "esp_heap_caps.h"
@@ -1776,7 +1777,7 @@ esp_err_t WebServerManager::handleSaveCaptivePortalConfig(httpd_req_t *req) {
   }
 
   cJSON *nfcReaderTypeItem = cJSON_GetObjectItem(obj, "nfcReaderType");
-  if (nfcReaderTypeItem && cJSON_IsNumber(nfcReaderTypeItem) && (nfcReaderTypeItem->valueint < 0 || nfcReaderTypeItem->valueint > 1)) {
+  if (nfcReaderTypeItem && cJSON_IsNumber(nfcReaderTypeItem) && !nfc::isValidReaderType(nfcReaderTypeItem->valueint)) {
     cJSON_Delete(obj);
     httpd_resp_set_status(req, "400 Bad Request");
     httpd_resp_set_type(req, "application/json");
