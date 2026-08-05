@@ -121,8 +121,8 @@ struct ProvisionRecorder {
             return persist_result;
         };
     }
-    // Deliberately returns (unlike on target which reboots), so the state
-    // machine's post-callback fallback path is exercised.
+    // Mirrors the target: the completion callback signals setup and
+    // returns; the state machine keeps running afterwards.
     std::function<void()> completeFn(FakeTransport &t) {
         return [this, &t]() {
             complete_called = true;
@@ -315,6 +315,31 @@ TEST(successful_flow_persist_then_state_then_response_then_complete) {
     // persist saw the exact credentials.
     CHECK(r.ssid == "mynet");
     CHECK(r.password == "s3cret");
+}
+
+TEST(remains_provisioned_after_complete_callback_returns) {
+    // Completion now returns without rebooting. A follow-up
+    // GET_CURRENT_STATE must still report Provisioned so the client's
+    // success screen holds.
+    FakeTransport t; FakeWifi w; FakeClock c; ProvisionRecorder r;
+    improv::StateMachine sm;
+    sm.begin(makeCfg(t, w, c, r));
+    t.push(makeWifiSettings("mynet", "s3cret"));
+    sm.loop();
+    w.is_connected_ = true;
+    sm.loop();
+    CHECK(r.complete_called);
+
+    t.outgoing.clear();
+    t.push(makeSimpleRpc(improv::Command::GetCurrentState));
+    sm.loop();
+
+    // Valid RPC emits Error(None) then the response frame.
+    auto frames = splitFrames(t.outgoing);
+    CHECK_EQ(frames.size(), 2u);
+    if (frames.size() < 2u) return;
+    CHECK(frameIsError(frames[0], improv::Error::None));
+    CHECK(frameIsCurrentState(frames[1], improv::State::Provisioned));
 }
 
 TEST(failed_hard_reports_unable_to_connect_and_returns_to_authorized) {

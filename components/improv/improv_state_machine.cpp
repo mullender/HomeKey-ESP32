@@ -55,7 +55,7 @@ void StateMachine::loop() {
 
 State StateMachine::currentReportedState() const {
     return (phase_ == Phase::Connecting)   ? State::Provisioning
-         : (phase_ == Phase::Provisioning) ? State::Provisioned
+         : (phase_ == Phase::Provisioned) ? State::Provisioned
                                            : State::Authorized;
 }
 
@@ -126,15 +126,17 @@ void StateMachine::pollConnecting() {
 
         // Now safe to signal: Provisioned state, then RPC response with URL.
         // This is the reference ordering the browser client expects.
-        phase_ = Phase::Provisioning;
+        phase_ = Phase::Provisioned;
         sendState(State::Provisioned);
         sendRpcResponse(Command::WifiSettings, {url});
 
-        // Adapter's completion: flush the transport and reboot. Expected not
-        // to return. If it does (test double or misbehaving), fall back to
-        // Idle rather than wedge in Provisioning.
+        // Adapter's completion: on target this signals the main task to
+        // continue with deferred hardware init (no reboot). Stay in
+        // Phase::Provisioned after it returns so any subsequent
+        // GET_CURRENT_STATE query from the browser keeps reporting
+        // Provisioned instead of dropping back to Authorized -- the
+        // client's "Device connected!" screen depends on that.
         if (cfg_.complete) cfg_.complete();
-        phase_ = Phase::Idle;
         return;
     }
 

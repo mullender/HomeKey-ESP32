@@ -8,7 +8,9 @@
 //     HomeSpan's own "WIFI" / "WIFIDATA" NVS blob (the same criterion
 //     HomeSpan itself uses to decide "provisioned" vs "needs config")
 //   - once HomeSpan has begun, wires the Improv on_provisioned callback to
-//     homeSpan.setWifiCredentials() + reboot
+//     homeSpan.setWifiCredentials() and signals the main setup task via
+//     xTaskNotifyGive so it can continue deferred hardware init in-process
+//     (no reboot -- see improv_wait_for_provisioning below).
 //
 // The decision is made once, at boot, and cached. A transient AP outage
 // after boot does NOT reopen credential replacement.
@@ -33,6 +35,14 @@ bool improv_should_own_serial(void);
  * No-op when improv_should_own_serial() returned false.
  */
 void improv_start_after_homespan_begin(void);
+
+/**
+ * Block the calling task until the Improv adapter signals a successful
+ * provisioning (portMAX_DELAY, no busy-loop). Must be paired with a
+ * prior improv_start_after_homespan_begin() from the same task, which
+ * registers the notify target before the Improv task can complete.
+ */
+void improv_wait_for_provisioning(void);
 
 #ifdef __cplusplus
 }

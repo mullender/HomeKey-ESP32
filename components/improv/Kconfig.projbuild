@@ -13,8 +13,8 @@ config ENABLE_IMPROV_SERIAL
         sole Serial RX consumer for that boot -- the HomeSpan console "press
         any key" trigger is suppressed to avoid a second reader. After a
         successful association the credentials are persisted via HomeSpan's
-        public API and the device reboots, handing serial ownership back to
-        the console on the next boot.
+        public API and setup continues in-process (no reboot); Improv
+        remains the sole Serial RX consumer for the rest of this boot.
 
         The existing captive-portal / config-AP flow is unchanged and remains
         the reprovisioning path once credentials are stored.

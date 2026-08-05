@@ -52,8 +52,11 @@ struct WifiDriver {
  * observes an "OK" that the device then fails to remember. persist returns
  * true on success and false on failure; a false return aborts the
  * transaction as UnableToConnect. complete runs after Provisioned + the RPC
- * response have been queued to the transport, and is where the adapter
- * flushes and reboots; it may not return.
+ * response have been queued to the transport; the adapter flushes the
+ * transport and signals its main setup task to resume deferred hardware
+ * init. complete returns normally, and the state machine remains in
+ * Phase::Provisioned so subsequent GET_CURRENT_STATE queries keep
+ * reporting Provisioned.
  */
 struct SerialConfig {
     std::string firmware_name;
@@ -91,7 +94,9 @@ private:
     enum class Phase {
         Idle,          // waiting for a WIFI_SETTINGS frame
         Connecting,    // wifi.begin() called, polling status
-        Provisioning,  // last poll succeeded, about to hand off
+        Provisioned,   // persist succeeded and complete callback fired;
+                       // stable post-success state, GET_CURRENT_STATE
+                       // continues to answer Provisioned
     };
 
     SerialConfig cfg_{};

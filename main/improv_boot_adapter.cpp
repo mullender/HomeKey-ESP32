@@ -1,6 +1,7 @@
 // Bridges the Improv Serial component to this project's HomeSpan-based
-// persistence, reboot path, and Arduino Serial transport. Kept out of the
-// component so improv/ has zero application-specific dependencies.
+// persistence, in-process handoff to the main setup task, and Arduino
+// Serial transport. Kept out of the component so improv/ has zero
+// application-specific dependencies.
 
 #include "improv_boot_adapter.hpp"
 
@@ -12,7 +13,6 @@
 #include <HomeSpan.h>
 #include <esp_log.h>
 #include <esp_mac.h>
-#include <esp_system.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <nvs.h>
@@ -34,6 +34,12 @@ constexpr const char *TAG = "improv_adapter";
 bool g_decided = false;
 bool g_owns    = false;
 TaskHandle_t g_task = nullptr;
+
+// Main-setup TaskHandle registered by improv_start_after_homespan_begin
+// BEFORE the Improv task is created, so a completion notify cannot race
+// ahead of the handle being visible. Task notifications are sticky, so
+// a notify that arrives before ulTaskNotifyTake is entered is preserved.
+TaskHandle_t g_main_task_to_notify = nullptr;
 
 // Read HomeSpan's persisted Wi-Fi credentials to decide whether Improv should
 // own Serial for this boot.
@@ -159,17 +165,13 @@ bool persist_credentials(const std::string &ssid, const std::string &password) {
     return true;
 }
 
-// Improv completion callback: run after Provisioned + RPC response have
-// been queued to Serial. Flush the transport and reboot; this is where the
-// ownership boundary lands. Not expected to return.
-void complete_and_reboot() {
-    ESP_LOGI(TAG, "provisioning complete; flushing Serial and rebooting");
+// Improv completion callback (runs on the Improv service task). No
+// reboot: signal the main setup task so it can continue deferred
+// hardware init in the same boot.
+void complete_and_signal() {
+    ESP_LOGI(TAG, "provisioning complete; signalling main task");
     Serial.flush();
-    // Small settle: Serial.flush() only waits for the software TX ring to
-    // drain, not the USB-CDC endpoint. Kept out of the pure state machine
-    // as an adapter-side concern.
-    vTaskDelay(pdMS_TO_TICKS(250));
-    esp_restart();
+    xTaskNotifyGive(g_main_task_to_notify);
 }
 
 // Dedicated Improv service task. Only started on the factory-provisioning
@@ -258,15 +260,19 @@ extern "C" void improv_start_after_homespan_begin(void) {
             },
         },
         .persist  = persist_credentials,
-        .complete = complete_and_reboot,
+        .complete = complete_and_signal,
     };
     improv::begin(cfg);
 
-    // Stack size chosen after inspecting the state machine's own working
-    // set (bounded parser buffer + two std::string members up to ~100 bytes
-    // each) plus WiFi.begin() and NVS calls invoked from the callbacks
-    // above. 4096 bytes leaves clear headroom for ESP_LOG formatting; the
-    // startup log line above reports the actual free stack for confirmation.
+    // Register the handoff target BEFORE the Improv task can run and
+    // reach complete_and_signal. This closes a race where a fast
+    // completion could xTaskNotifyGive(nullptr) if we captured the
+    // handle inside improv_wait_for_provisioning() instead.
+    g_main_task_to_notify = xTaskGetCurrentTaskHandle();
+
+    // 4096 stack: bounded parser buffer + two ~100 byte strings + WiFi/
+    // NVS callbacks + ESP_LOG formatting. Startup log line below reports
+    // the actual free stack for confirmation.
     BaseType_t rc = xTaskCreate(&improv_task, "improv", 4096, nullptr,
                                 tskIDLE_PRIORITY + 1, &g_task);
     if (rc != pdPASS) {
@@ -278,9 +284,18 @@ extern "C" void improv_start_after_homespan_begin(void) {
     ESP_LOGI(TAG, "xTaskCreate(improv) ok: handle=%p", static_cast<void *>(g_task));
 }
 
+extern "C" void improv_wait_for_provisioning(void) {
+    // The Improv task's completion callback notifies g_main_task_to_notify,
+    // which improv_start_after_homespan_begin already set to this task.
+    ESP_LOGI(TAG, "waiting for Improv provisioning handoff");
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    ESP_LOGI(TAG, "handoff received");
+}
+
 #else  // !CONFIG_ENABLE_IMPROV_SERIAL
 
 extern "C" bool improv_should_own_serial(void) { return false; }
 extern "C" void improv_start_after_homespan_begin(void) {}
+extern "C" void improv_wait_for_provisioning(void) {}
 
 #endif

@@ -186,52 +186,43 @@ void setup() {
   } else if (miscConfig.nfcReaderType == 2) {
     ESP_LOGI(TAG, "NFC I2C pins: SDA=%d, SCL=%d", activeNfcPins[0], activeNfcPins[1]);
   }
-  // Factory-mode Improv branch: on an unprovisioned device we skip every
-  // slow / hardware-dependent begin() path (NFC probe retries, GPIO
-  // acquisition, lock hardware, LockManager services) and stand up only the
-  // minimum needed to receive credentials over Serial: homeSpan.begin()
-  // (opens the NVS handle setWifiCredentials writes to, and honours the
-  // "Improv owns Serial" flag so HomeSpan's console does not race Improv on
-  // the same USB-CDC endpoint) plus the dedicated Improv service task.
-  //
-  // Bounded startup cost: HomeSpan.begin() contains a fixed 2 s serial
-  // banner delay (see components/HomeSpan/upstream/src/HomeSpan.cpp:145)
-  // and no WiFi association -- association only happens in poll(), which
-  // this branch never calls. initializeETH() returns immediately when
-  // ethernetEnabled is false, which is the compile-time default (see
-  // ETH_ENABLED in main/include/defaults.h) and cannot be changed by
-  // Improv, so on a freshly flashed factory image homekitLock->begin()
-  // returns within ~2 s and the Improv task starts responding immediately
-  // after. Everything else is deferred until the reboot that follows
-  // successful provisioning, at which point NVS is populated,
-  // improv_should_own_serial() returns false, and the normal boot path
-  // below runs unchanged.
+  // Shared post-manager-construction sequence. `run_homekit_begin`
+  // controls whether homekitLock->begin() runs in its historical slot
+  // (after hardwareManager, before lockManager) -- true on a normal
+  // boot, false on the factory-provisioning path where it already ran
+  // at the top of the branch. Called exactly once per boot.
+  auto init_hardware_and_services = [&](bool run_homekit_begin) {
+    readerDataManager->begin();
+    nfcManager = std::make_unique<NfcManager>(*readerDataManager,
+                                activeNfcPins,
+                                miscConfig.nfcReaderType,
+                                miscConfig.nfcIrqPin,
+                                miscConfig.nfcVenPin,
+                                miscConfig.hkAuthPrecomputeEnabled,
+                                miscConfig.nfcFastPollingEnabled);
+    nfcManager->begin();
+    webServerManager->setNfcManager(nfcManager.get());
+    webServerManager->setMqttManager(mqttManager.get());
+    hardwareManager->begin();
+    if (run_homekit_begin) homekitLock->begin();
+    lockManager->begin();
+    pollHS = true;
+  };
+
   if (improv_should_own_serial()) {
+    // Factory-provisioning path. Stand up only HomeSpan + Improv, then
+    // block portMAX_DELAY on a FreeRTOS notify from the Improv complete
+    // callback. Scheduler continues to service Improv/WiFi tasks. On
+    // handoff, run the same manager sequence a normal boot uses.
     homekitLock->begin();
     improv_start_after_homespan_begin();
-    ESP_LOGI(TAG, "Factory provisioning mode: NFC / lock init skipped; "
-                  "Improv Serial owns the port and will reboot on success");
-    pollHS = false;
+    ESP_LOGI(TAG, "Factory mode: waiting for Improv handoff");
+    improv_wait_for_provisioning();
+    init_hardware_and_services(/*run_homekit_begin*/false);
     return;
   }
 
-  readerDataManager->begin();
-
-  nfcManager = std::make_unique<NfcManager>(*readerDataManager,
-                              activeNfcPins,
-                              miscConfig.nfcReaderType,
-                              miscConfig.nfcIrqPin,
-                              miscConfig.nfcVenPin,
-                              miscConfig.hkAuthPrecomputeEnabled,
-                              miscConfig.nfcFastPollingEnabled);
-  nfcManager->begin();
-
-  webServerManager->setNfcManager(nfcManager.get());
-  webServerManager->setMqttManager(mqttManager.get());
-  hardwareManager->begin();
-  homekitLock->begin();
-  lockManager->begin();
-  pollHS = true;
+  init_hardware_and_services(/*run_homekit_begin*/true);
 }
 /**
  * @brief Run the main application loop: service HomeSpan events and yield to the RTOS.
