@@ -144,9 +144,11 @@ void NfcManager::authPrecomputeTask() {
       !snapshot.reader_pk.empty();
 
     if (!provisioned) {
-      ESP_LOGD(TAG, "Auth precompute: reader not provisioned yet, retrying...");
+      // invalidateAuthCache (saveFn / ACCESSDATA_CHANGED) will notify us;
+      // sticky notifications close the snapshot-vs-take race.
       xQueueSend(m_authCtxFreeQueue, &item, 0);
-      ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1000));
+      ESP_LOGI(TAG, "Auth precompute: reader not provisioned; waiting for reader data.");
+      ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
       continue;
     }
 
