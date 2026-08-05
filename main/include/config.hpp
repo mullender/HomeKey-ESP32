@@ -77,11 +77,9 @@ static const std::array<nfcGpioPins_t,6> nfcGpioPinsPresets = {
     {"CASmo-NFC-MB-ETH", 0, {5, 14, 12, 13}},
       // PN7161
     {"Default", 1, {SS_PIN, SCK_PIN, MISO_PIN, MOSI_PIN}},
-      // ST25R3916 (I2C: slot 0=SDA, slot 1=SCL; slots 2-3 unused).
-      // M5Stack AtomS3 Lite exposes I2C on the Grove port as SDA=G2, SCL=G1.
-      // Used by the AtomS3 Lite installer variant as its factory default;
-      // see main/Kconfig.projbuild (INSTALLER_ATOMS3_LITE_DEFAULTS).
-    {"AtomS3 Lite + Unit NFC", 2, {2, 1, 255, 255}}
+      // AtomS3 Lite Grove I2C. irqPin/venPin explicit PIN_UNSET so the
+      // per-chip nfcGpioPins_t defaults (S3: 8/9) don't leak through.
+    {"AtomS3 Lite + Unit NFC", 2, {2, 1, 255, 255}, /*irqPin*/255, /*venPin*/255}
     }
 };
 

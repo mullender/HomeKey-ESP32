@@ -263,10 +263,13 @@ NfcManager::NfcManager(ReaderDataManager& readerDataManager,
     pinAllocations.emplace(PinFunctions::MISO, GPIOAllocator::instance().acquire(gpio_num_t(nfcGpioPins[2]), GPIO_MODE_DISABLE, "SPI2_MISO"));
     pinAllocations.emplace(PinFunctions::MOSI, GPIOAllocator::instance().acquire(gpio_num_t(nfcGpioPins[3]), GPIO_MODE_DISABLE, "SPI2_MOSI"));
   }
-  if(nfcIrqPin != 255)
-    pinAllocations.emplace(PinFunctions::IRQ, GPIOAllocator::instance().acquire(gpio_num_t(nfcIrqPin), GPIO_MODE_DISABLE, "NFC_IRQ"));
-  if(nfcVenPin != 255)
-    pinAllocations.emplace(PinFunctions::VEN, GPIOAllocator::instance().acquire(gpio_num_t(nfcVenPin), GPIO_MODE_DISABLE, "NFC_VEN"));
+  // IRQ / VEN are PN7160-only side pins (matches the ctor docstring).
+  if (nfcReaderType == 1) {
+    if (nfcIrqPin != 255)
+      pinAllocations.emplace(PinFunctions::IRQ, GPIOAllocator::instance().acquire(gpio_num_t(nfcIrqPin), GPIO_MODE_DISABLE, "NFC_IRQ"));
+    if (nfcVenPin != 255)
+      pinAllocations.emplace(PinFunctions::VEN, GPIOAllocator::instance().acquire(gpio_num_t(nfcVenPin), GPIO_MODE_DISABLE, "NFC_VEN"));
+  }
   m_hk_event = AppEventLoop::subscribe(HK_EVENT, HK_INTERNAL_EVENT, [&](const uint8_t* data, size_t size){
     if(size == 0 || data == nullptr) return;
     std::span<const uint8_t> payload(data, size);
