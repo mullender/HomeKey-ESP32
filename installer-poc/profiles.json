@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "profiles": [
+    {
+      "name": "esp32-generic",
+      "chip_family": "ESP32",
+      "idf_target": "esp32",
+      "sdkconfig_defaults": ["sdkconfig.defaults"],
+      "installer_flag": false
+    },
+    {
+      "name": "esp32s3-generic",
+      "chip_family": "ESP32-S3",
+      "idf_target": "esp32s3",
+      "sdkconfig_defaults": ["sdkconfig.defaults"],
+      "installer_flag": false
+    },
+    {
+      "name": "esp32c3-generic",
+      "chip_family": "ESP32-C3",
+      "idf_target": "esp32c3",
+      "sdkconfig_defaults": ["sdkconfig.defaults"],
+      "installer_flag": false
+    },
+    {
+      "name": "atoms3lite-unit-nfc",
+      "chip_family": "ESP32-S3",
+      "idf_target": "esp32s3",
+      "sdkconfig_defaults": ["sdkconfig.defaults", "sdkconfig.defaults.installer.atoms3"],
+      "installer_flag": true
+    }
+  ]
+}

@@ -1,5 +1,10 @@
 cmake_minimum_required(VERSION 3.16)
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+# Opt-in per-build dependencies.lock (installer-poc uses this to keep the
+# tracked repo-root lock untouched across target builds).
+if(DEFINED HOMEKEY_DEPENDENCIES_LOCK)
+    idf_build_set_property(DEPENDENCIES_LOCK "${HOMEKEY_DEPENDENCIES_LOCK}")
+endif()
 idf_build_set_property(MINIMAL_BUILD ON)
 project(HomeKey-ESP32)
 idf_build_get_property(IDF_TARGET IDF_TARGET)

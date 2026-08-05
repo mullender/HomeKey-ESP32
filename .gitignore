@@ -11,6 +11,7 @@ sdkconfig*
 !main/test/stubs/sdkconfig.h
 build/
 build.*/
+dist/
 .pio/
 managed_components/
 .gemini/
