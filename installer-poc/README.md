@@ -84,8 +84,69 @@ no artifacts.
 
 ## Non-goals
 
-- No CI integration.
-- No uploads. No GitHub release. No Pages workflow.
+- No firmware build in CI. The verified local bundle is published as a
+  prerelease and the Pages workflow only validates and serves it.
+- No automatic release creation. Publishing the local bundle is an
+  explicit operator action.
 - The script does not edit tracked source. IDF and Bun write
   generated, ignored files under `build.poc` and `data`.
 - No parallelism -- single serial pass, easy to reason about failures.
+
+## Publish the Pages POC
+
+CI does not rebuild firmware. The release assets are the source of
+truth; Pages just re-serves them same-origin so ESP Web Tools can flash
+from the browser (release-assets.githubusercontent.com sends no CORS
+header, so the bins can't be flashed directly from a release URL). The
+normal release-asset workflow skips the `multi-board-poc-*` tag prefix,
+so it cannot attach binaries from an unrelated CI run.
+
+Steps:
+
+This step requires an authenticated `gh` CLI and `jq`.
+
+1. Build locally as above so `dist/<short>/` exists (17 files: one
+   manifest + four quads of `app.bin` / `app.bin.sha256` /
+   `factory.bin` / `factory.bin.sha256`).
+2. Create the prerelease from the exact commit the bundle was built at
+   and upload every file in the bundle dir:
+
+   ```sh
+   bundle=dist/953b36c
+   short=$(jq -r .commit_short "$bundle/manifest.json")
+   commit=$(jq -r .commit "$bundle/manifest.json")
+   test "$(basename "$bundle")" = "$short"
+   gh release create "multi-board-poc-$short" \
+     --repo mullender/HomeKey-ESP32 \
+     --target "$commit" \
+     --prerelease \
+     --title "multi-board POC $short" \
+     --notes "Multi-board installer POC bundle for $commit." \
+     "$bundle"/*
+   ```
+
+3. Push the branch. A push to `feat/multi-board-installer` triggers
+   `.github/workflows/deploy-multi-board-poc.yml`, which discovers the
+   newest `multi-board-poc-*` prerelease, downloads all its assets, and
+   deploys the generated site. `workflow_dispatch` is defined but does
+   not become invokable until this workflow file lands on the default
+   branch, so before that only the branch push actually runs the job.
+
+Once deployed the site is served at
+`https://mullender.github.io/HomeKey-ESP32/` (four board rows,
+AtomS3 Lite listed first as the solder-free preset, ESP32-C6 not
+offered because of the OTA-slot overflow noted above).
+
+Before the site goes live, the Pages job re-verifies:
+
+- the tag's target commit equals `manifest.commit` (annotated tags
+  followed);
+- the bundle contains exactly the four contracted profiles with the
+  right `chip_family`, `idf_target`, and `installer_flag`;
+- each factory is exactly 4 MiB and its filename matches
+  `HomeKey-ESP32-<short>-<profile>-<idf_target>-factory.bin`;
+- each `.sha256` sidecar's full text equals
+  `"<hash>  <factory>\n"` and matches the on-disk hash.
+
+If any check fails the deploy step is skipped and the currently live
+site is untouched.

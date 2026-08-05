@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HomeKey-ESP32 installer (multi-board POC)</title>
+<style>
+:root { color-scheme: light dark; }
+body { font-family: system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+       max-width: 46rem; margin: 2rem auto; padding: 1rem 1.5rem; line-height: 1.5; }
+h1 { font-size: 1.5rem; margin: 0 0 0.5rem; }
+.warn { background:#fff3cd; color:#533f03; border:1px solid #ffe69c;
+        border-left:4px solid #ffcc00; padding:0.9rem 1rem;
+        margin:1rem 0; border-radius:4px; }
+.info { background:#e7f3fe; color:#0c5460; border:1px solid #bee5eb;
+        border-left:4px solid #0c5460; padding:0.9rem 1rem;
+        margin:1rem 0; border-radius:4px; }
+@media (prefers-color-scheme: dark) {
+  .warn { background:#3a2d00; color:#ffe69c; border-color:#6b5200; }
+  .info { background:#092b3a; color:#bee5eb; border-color:#1e5266; }
+}
+.badge { display:inline-block; background:#1e5266; color:#fff; font-size:0.75em;
+         padding:0.1rem 0.5rem; border-radius:0.75rem; margin-left:0.4rem;
+         vertical-align: middle; }
+table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
+th, td { text-align: left; padding: 0.5rem 0.6rem; border-bottom: 1px solid #8884; vertical-align: middle; }
+th { font-weight: 600; }
+.mono, code { font-family: SFMono-Regular,Menlo,Consolas,monospace; font-size: 0.9em; }
+.browser-note { color:#666; font-size: 0.85em; margin-top: 1.2rem; }
+.small-note { color:#666; font-size: 0.85em; margin-top: 0.6rem; }
+footer { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #ccc4;
+         font-size: 0.85em; color:#666; }
+
+/* Narrow screens: fold the table into stacked cards so nothing gets
+   crushed against the install button on mobile. The <thead> is hidden
+   and each <td> uses its `data-label` as an inline heading. */
+@media (max-width: 640px) {
+  table, tbody, tr, td { display: block; }
+  thead { display: none; }
+  tr { border: 1px solid #8884; border-radius: 6px; padding: 0.6rem 0.8rem;
+       margin-bottom: 0.8rem; }
+  td { border: none; padding: 0.15rem 0; }
+  td::before { content: attr(data-label); display: block; font-weight: 600;
+               color: #666; font-size: 0.8em; margin-top: 0.2rem; }
+  td:first-child::before { display: none; }
+}
+</style>
+</head>
+<body>
+<h1>HomeKey-ESP32 installer</h1>
+<p>Pick the board that matches your hardware, then click Connect. The
+build embedded here is the same commit as the associated
+<a href="./build-manifest.json"><span class="mono">build-manifest.json</span></a>.</p>
+<div class="warn"><strong>Factory install erases the entire flash.</strong>
+Existing HomeKit pairing, saved Wi-Fi credentials, HomeKey reader data,
+and stored core dumps on the board will be lost. Intended for first-time
+setup or a full reset.</div>
+<div class="info"><strong>Generic images require post-provision configuration.</strong>
+Once Wi-Fi is set up via the flasher, open the device's web UI and pick
+the NFC reader type (PN532 / PN7160 / ST25R3916) and its GPIO pins. The
+AtomS3 Lite preset below ships pre-configured for the M5Stack Unit NFC
+and does not require this step.</div>
+<table>
+<thead>
+<tr><th>Profile</th><th>Chip / board</th><th>Install</th></tr>
+</thead>
+<tbody>
+<tr>
+  <td data-label="Profile"><span class="mono">atoms3lite-unit-nfc</span>
+      <span class="badge">Solder-free preset</span></td>
+  <td data-label="Chip / board">M5Stack AtomS3 Lite + Unit NFC (ST25R3916 on Grove I2C)</td>
+  <td data-label="Install"><esp-web-install-button manifest="./manifests/atoms3lite-unit-nfc.json"></esp-web-install-button></td>
+</tr>
+<tr>
+  <td data-label="Profile"><span class="mono">esp32-generic</span></td>
+  <td data-label="Chip / board">ESP32</td>
+  <td data-label="Install"><esp-web-install-button manifest="./manifests/esp32-generic.json"></esp-web-install-button></td>
+</tr>
+<tr>
+  <td data-label="Profile"><span class="mono">esp32s3-generic</span></td>
+  <td data-label="Chip / board">ESP32-S3</td>
+  <td data-label="Install"><esp-web-install-button manifest="./manifests/esp32s3-generic.json"></esp-web-install-button></td>
+</tr>
+<tr>
+  <td data-label="Profile"><span class="mono">esp32c3-generic</span></td>
+  <td data-label="Chip / board">ESP32-C3</td>
+  <td data-label="Install"><esp-web-install-button manifest="./manifests/esp32c3-generic.json"></esp-web-install-button></td>
+</tr>
+</tbody>
+</table>
+<p class="small-note">ESP32-C6 is not offered here: the current image
+overflows its OTA slot. Tracked as a follow-up.</p>
+<p class="browser-note">Requires Chrome, Edge, or another Chromium-based
+browser on a desktop OS. Safari and Firefox do not support Web Serial
+and this page will show a compatibility notice instead of the install
+button.</p>
+<footer>
+Provenance:
+<a href="./build-manifest.json">build-manifest.json</a>.
+</footer>
+<script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+</body>
+</html>

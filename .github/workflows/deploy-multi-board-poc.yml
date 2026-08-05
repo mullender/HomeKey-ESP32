@@ -1,0 +1,132 @@
+# Deploy the multi-board installer POC to GitHub Pages.
+#
+# Consumes an already-uploaded `multi-board-poc-*` GitHub Release (its
+# assets are the immutable outputs of installer-poc/build_release.py --
+# never rebuilt in CI). Downloads every asset, verifies the tag's target
+# commit matches the bundle's manifest.commit, runs the site generator,
+# and deploys the resulting artifact to Pages.
+#
+# POC-only: lives on feat/multi-board-installer. Runs on push to that
+# branch (auto-discovers the newest matching prerelease) or on manual
+# dispatch (may pin to a specific matching tag). Does not touch the
+# existing deploy-installer workflow on main.
+name: deploy-multi-board-poc
+
+on:
+  push:
+    branches: [feat/multi-board-installer]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "multi-board-poc-* prerelease tag (empty = newest matching)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Checkout triggering branch commit
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Discover release tag
+        id: pick
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REQUESTED_TAG: ${{ github.event.inputs.tag || '' }}
+        run: |
+          set -euo pipefail
+          if [ -n "$REQUESTED_TAG" ]; then
+            if [[ "$REQUESTED_TAG" != multi-board-poc-* ]]; then
+              echo "::error::input tag '$REQUESTED_TAG' does not match multi-board-poc-*"
+              exit 1
+            fi
+            info=$(gh release view "$REQUESTED_TAG" --repo "$GITHUB_REPOSITORY" \
+              --json tagName,isPrerelease 2>/dev/null || true)
+            if [ -z "$info" ]; then
+              echo "::error::release '$REQUESTED_TAG' not found"; exit 1
+            fi
+            if [ "$(printf '%s' "$info" | jq -r '.isPrerelease')" != "true" ]; then
+              echo "::error::'$REQUESTED_TAG' is not marked as a prerelease"; exit 1
+            fi
+            tag="$REQUESTED_TAG"
+          else
+            tag=$(gh release list --repo "$GITHUB_REPOSITORY" \
+              --json tagName,createdAt,isPrerelease --limit 100 \
+              --jq '[.[] | select(.tagName | startswith("multi-board-poc-")) | select(.isPrerelease)] | sort_by(.createdAt) | reverse | .[0].tagName // empty')
+            if [ -z "$tag" ]; then
+              echo "::error::no multi-board-poc-* prerelease found"; exit 1
+            fi
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "picked tag: $tag"
+
+      - name: Download release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p bundle
+          gh release download "${{ steps.pick.outputs.tag }}" \
+            --repo "$GITHUB_REPOSITORY" --dir bundle --clobber
+          ls -la bundle
+
+      - name: Validate tag target commit == manifest.commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${{ steps.pick.outputs.tag }}"
+          ref=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq '.object')
+          obj_type=$(printf '%s' "$ref" | jq -r '.type')
+          obj_sha=$(printf '%s' "$ref" | jq -r '.sha')
+          if [ "$obj_type" = "tag" ]; then
+            tag_commit=$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$obj_sha" --jq '.object.sha')
+          else
+            tag_commit="$obj_sha"
+          fi
+          manifest_commit=$(python3 -c "import json; print(json.load(open('bundle/manifest.json'))['commit'])")
+          echo "tag=$tag  tag_commit=$tag_commit  manifest_commit=$manifest_commit"
+          if [ "$tag_commit" != "$manifest_commit" ]; then
+            echo "::error::tag target commit $tag_commit does not match bundle manifest.commit $manifest_commit"
+            exit 1
+          fi
+
+      - name: Run unit tests for the generator
+        run: python3 -m unittest installer-poc.test_generate_site -v
+
+      - name: Generate site
+        run: |
+          python3 installer-poc/generate_site.py \
+            --bundle bundle \
+            --out _site \
+            --release-tag "${{ steps.pick.outputs.tag }}"
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4

@@ -5,6 +5,7 @@ on:
 
 jobs:
   release-assets:
+    if: ${{ !startsWith(github.event.release.tag_name, 'multi-board-poc-') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write

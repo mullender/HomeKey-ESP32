@@ -12,6 +12,8 @@ sdkconfig*
 build/
 build.*/
 dist/
+__pycache__/
+*.py[cod]
 .pio/
 managed_components/
 .gemini/
