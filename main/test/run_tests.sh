@@ -40,6 +40,11 @@ echo "==> Compiling with $CXX"
   "$here/test_nfc_reader_type.cpp" \
   -o "$BUILD/test_nfc_reader_type"
 
+"$CXX" -std=c++17 -Wall -Wextra -Wno-unused-parameter -O0 -g \
+  -I"$main/include" \
+  "$here/test_misc_config_nfc_pin_check.cpp" \
+  -o "$BUILD/test_misc_config_nfc_pin_check"
+
 # One test source, compiled twice: generic (no flag) and installer
 # (-DCONFIG_INSTALLER_ATOMS3_LITE_DEFAULTS=1, matching what
 # sdkconfig.defaults.installer.atoms3 flips on target). All assertions are
@@ -58,5 +63,6 @@ echo "==> Compiling with $CXX"
 echo "==> Running"
 "$BUILD/test_homespan_wifidata_check"
 "$BUILD/test_nfc_reader_type"
+"$BUILD/test_misc_config_nfc_pin_check"
 "$BUILD/test_installer_defaults_generic" && echo "  ok  generic defaults static_asserts hold"
 "$BUILD/test_installer_defaults_installer" && echo "  ok  installer defaults static_asserts hold"
